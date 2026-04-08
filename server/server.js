@@ -2,7 +2,7 @@ import { SerialPort } from 'serialport'
 import { WebSocketServer } from 'ws'
 
 // TODO: Update this for each lab environment
-const SERIAL_PATH = process.env.SERIAL_PATH || 'COM4' // Windows example //MacOS /dev/usbmodemXXX or /dev/cu.usbserialXXX
+const SERIAL_PATH = process.env.SERIAL_PATH || 'COM9' // Windows example //MacOS /dev/usbmodemXXX or /dev/cu.usbserialXXX
 const SERIAL_BAUD = 9600
 const WS_PORT = 8080
 
