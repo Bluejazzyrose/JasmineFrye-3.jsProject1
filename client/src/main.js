@@ -1,3 +1,4 @@
+/**
 import './style.css'
 import p5 from 'p5'
 
@@ -43,3 +44,11 @@ const sketch = (p) => {
 }
 
 new p5(sketch)
+**/
+
+// client/src/main.js
+import './style.css'
+//import { startP5SensorTest } from './p5SensorSketch.js'
+import { startThreeSensorTest } from './threeScene.js'
+//startP5SensorTest()
+startThreeSensorTest()
