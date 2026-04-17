@@ -145,3 +145,26 @@ function animate() {
 }
 
 animate();
+
+// ---------------------------
+// List Bones
+//----------------------------
+function listBones(model) {
+  model.traverse((child) => {
+    if (child.isBone) {
+      console.log("Bone:", child.name);
+    }
+  });
+}
+
+loader.load(
+  '/models/robot_hand/robot_hand.gltf',
+  (gltf) => {
+    const hand = gltf.scene;
+    hand.rotation.z = Math.PI;
+
+    // Add model first temporarily so bounding box works correctly
+    scene.add(hand);
+    listBones(hand);
+  }
+)

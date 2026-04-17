@@ -1,0 +1,516 @@
+import './style.css';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+// =====================================================
+// Scene setup
+// =====================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1e1e1e);
+
+const camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+);
+camera.position.set(0, 1.5, 8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// =====================================================
+// Orbit controls
+// =====================================================
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.target.set(0, 1, 0);
+controls.minDistance = 2;
+controls.maxDistance = 15;
+controls.update();
+
+// =====================================================
+// Lights / helpers
+// =====================================================
+scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+
+const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
+dirLight1.position.set(5, 6, 5);
+scene.add(dirLight1);
+
+const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
+dirLight2.position.set(-5, 4, -3);
+scene.add(dirLight2);
+
+scene.add(new THREE.GridHelper(10, 10));
+scene.add(new THREE.AxesHelper(2));
+
+// =====================================================
+// Globals
+// =====================================================
+let handModel = null;
+let testNodes = [];
+let currentNodeIndex = 0;
+let currentNode = null;
+let currentNodeHelper = null;
+
+const originalRotations = new Map();
+
+const state = {
+    angle: 0,
+    axis: 'x',
+    filter: 'all',
+};
+
+// =====================================================
+// Helpers
+// =====================================================
+function autoScaleAndCenter(object, targetSize = 4) {
+    const box = new THREE.Box3().setFromObject(object);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    if (maxDim === 0) {
+        console.error('Model size is zero.');
+        return;
+    }
+
+    const scale = targetSize / maxDim;
+    object.scale.setScalar(scale);
+
+    const scaledBox = new THREE.Box3().setFromObject(object);
+    const center = scaledBox.getCenter(new THREE.Vector3());
+
+    object.position.x -= center.x;
+    object.position.y -= center.y;
+    object.position.z -= center.z;
+
+    const finalBox = new THREE.Box3().setFromObject(object);
+    const finalSize = finalBox.getSize(new THREE.Vector3());
+    object.position.y += finalSize.y / 2;
+}
+
+function isBoneLikeNode(child) {
+    const name = (child.name || '').toLowerCase();
+
+    return (
+        name.startsWith('bone_') ||
+        name.startsWith('contr_') ||
+        name.includes('tumb') ||
+        name.includes('thumb') ||
+        name.includes('index') ||
+        name.includes('middle') ||
+        name.includes('ring') ||
+        name.includes('pinky') ||
+        name.includes('palm')
+    );
+}
+
+function collectTestNodes(model) {
+    const result = [];
+
+    model.traverse((child) => {
+        if (isBoneLikeNode(child)) {
+        result.push(child);
+        }
+    });
+
+    return result;
+}
+
+function saveOriginalRotation(node) {
+    if (!node || originalRotations.has(node.uuid)) return;
+    originalRotations.set(node.uuid, node.rotation.clone());
+}
+
+function restoreOriginalRotation(node) {
+    if (!node) return;
+    const rot = originalRotations.get(node.uuid);
+    if (!rot) return;
+    node.rotation.copy(rot);
+}
+
+function restoreAllRotations() {
+    testNodes.forEach((node) => restoreOriginalRotation(node));
+}
+
+function printNodes(nodes) {
+    console.log('========== TEST NODES ==========');
+    nodes.forEach((node, i) => {
+        console.log(`${i}: ${node.name} [${node.type}]`);
+    });
+    console.log('================================');
+}
+
+function nodeMatchesFilter(node, filter) {
+    const name = (node.name || '').toLowerCase();
+
+    if (filter === 'all') return true;
+    if (filter === 'thumb') return name.includes('tumb') || name.includes('thumb');
+    if (filter === 'index') return name.includes('index');
+    if (filter === 'middle') return name.includes('middle');
+    if (filter === 'ring') return name.includes('ring');
+    if (filter === 'pinky') return name.includes('pinky');
+
+    return true;
+}
+
+function getFilteredNodes() {
+    return testNodes.filter((node) => nodeMatchesFilter(node, state.filter));
+}
+
+function clearCurrentHelper() {
+    if (currentNodeHelper && currentNode) {
+        currentNode.remove(currentNodeHelper);
+        currentNodeHelper = null;
+    }
+}
+
+function addCurrentHelper(node) {
+    clearCurrentHelper();
+    if (!node) return;
+
+    const helper = new THREE.AxesHelper(0.35);
+    node.add(helper);
+    currentNodeHelper = helper;
+}
+
+function updateCurrentNode() {
+    const filtered = getFilteredNodes();
+
+    if (filtered.length === 0) {
+        currentNode = null;
+        nodeNameEl.textContent = 'None found';
+        nodeIndexEl.textContent = '0 / 0';
+        return;
+    }
+
+    currentNodeIndex =
+        ((currentNodeIndex % filtered.length) + filtered.length) % filtered.length;
+
+    currentNode = filtered[currentNodeIndex];
+
+    nodeNameEl.textContent = currentNode.name;
+    nodeIndexEl.textContent = `${currentNodeIndex + 1} / ${filtered.length}`;
+
+    addCurrentHelper(currentNode);
+    applyCurrentRotation();
+}
+
+function applyCurrentRotation() {
+    restoreAllRotations();
+
+    if (!currentNode) return;
+
+    const radians = THREE.MathUtils.degToRad(state.angle);
+    currentNode.rotation[state.axis] += radians;
+}
+
+function nextNode() {
+    currentNodeIndex++;
+    updateCurrentNode();
+}
+
+function previousNode() {
+    currentNodeIndex--;
+    updateCurrentNode();
+}
+
+function categorizeNode(name) {
+    const lower = (name || '').toLowerCase();
+
+    if (lower.includes('tumb') || lower.includes('thumb')) return 'thumb';
+    if (lower.includes('index')) return 'index';
+    if (lower.includes('middle')) return 'middle';
+    if (lower.includes('ring')) return 'ring';
+    if (lower.includes('pinky')) return 'pinky';
+    if (lower.includes('palm')) return 'palm';
+    if (lower.startsWith('contr_')) return 'controller';
+    if (lower.startsWith('bone_')) return 'bone-like';
+
+    return 'other';
+}
+
+function printSummary() {
+    const groups = {
+        thumb: [],
+        index: [],
+        middle: [],
+        ring: [],
+        pinky: [],
+        palm: [],
+        controller: [],
+        'bone-like': [],
+        other: [],
+    };
+
+    testNodes.forEach((node) => {
+        groups[categorizeNode(node.name)].push(node.name);
+    });
+
+    console.log('========== NODE SUMMARY ==========');
+    Object.entries(groups).forEach(([group, names]) => {
+        console.log(`\n${group.toUpperCase()}:`);
+        names.forEach((name) => console.log('  ', name));
+    });
+    console.log('==================================');
+}
+
+// =====================================================
+// UI
+// =====================================================
+const panel = document.createElement('div');
+panel.id = 'control-panel';
+
+const title = document.createElement('h2');
+title.textContent = 'Node/Bone Tester';
+panel.appendChild(title);
+
+const desc = document.createElement('p');
+desc.innerHTML =
+  'This version tests <strong>bone-like named nodes</strong>, not only <code>isBone</code> objects.';
+panel.appendChild(desc);
+
+const info = document.createElement('div');
+info.className = 'info-block';
+
+const nameRow = document.createElement('div');
+nameRow.innerHTML = '<strong>Current Node:</strong> ';
+const nodeNameEl = document.createElement('span');
+nodeNameEl.textContent = 'Not loaded';
+nameRow.appendChild(nodeNameEl);
+
+const indexRow = document.createElement('div');
+indexRow.innerHTML = '<strong>Index:</strong> ';
+const nodeIndexEl = document.createElement('span');
+nodeIndexEl.textContent = '0 / 0';
+indexRow.appendChild(nodeIndexEl);
+
+info.appendChild(nameRow);
+info.appendChild(indexRow);
+panel.appendChild(info);
+
+// Filter
+const filterRow = document.createElement('div');
+filterRow.className = 'control-row';
+
+const filterLabel = document.createElement('label');
+filterLabel.textContent = 'Filter:';
+
+const filterSelect = document.createElement('select');
+['all', 'thumb', 'index', 'middle', 'ring', 'pinky'].forEach((value) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    filterSelect.appendChild(option);
+});
+
+filterSelect.addEventListener('change', () => {
+    state.filter = filterSelect.value;
+    currentNodeIndex = 0;
+    updateCurrentNode();
+});
+
+filterRow.appendChild(filterLabel);
+filterRow.appendChild(filterSelect);
+panel.appendChild(filterRow);
+
+// Axis
+const axisRow = document.createElement('div');
+axisRow.className = 'control-row';
+
+const axisLabel = document.createElement('label');
+axisLabel.textContent = 'Axis:';
+
+const axisSelect = document.createElement('select');
+['x', 'y', 'z'].forEach((value) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value.toUpperCase();
+    axisSelect.appendChild(option);
+});
+
+axisSelect.addEventListener('change', () => {
+    state.axis = axisSelect.value;
+    applyCurrentRotation();
+});
+
+axisRow.appendChild(axisLabel);
+axisRow.appendChild(axisSelect);
+panel.appendChild(axisRow);
+
+// Angle slider
+const angleRow = document.createElement('div');
+angleRow.className = 'slider-row';
+
+const angleLabel = document.createElement('label');
+angleLabel.textContent = 'Angle:';
+
+const angleSlider = document.createElement('input');
+angleSlider.type = 'range';
+angleSlider.min = '-90';
+angleSlider.max = '90';
+angleSlider.value = '0';
+
+const angleValue = document.createElement('span');
+angleValue.className = 'value';
+angleValue.textContent = '0';
+
+angleSlider.addEventListener('input', () => {
+    state.angle = Number(angleSlider.value);
+    angleValue.textContent = angleSlider.value;
+    applyCurrentRotation();
+});
+
+angleRow.appendChild(angleLabel);
+angleRow.appendChild(angleSlider);
+angleRow.appendChild(angleValue);
+panel.appendChild(angleRow);
+
+// Buttons
+const row1 = document.createElement('div');
+row1.className = 'button-row';
+
+const prevBtn = document.createElement('button');
+prevBtn.textContent = 'Previous';
+prevBtn.onclick = previousNode;
+
+const nextBtn = document.createElement('button');
+nextBtn.textContent = 'Next';
+nextBtn.onclick = nextNode;
+
+row1.appendChild(prevBtn);
+row1.appendChild(nextBtn);
+panel.appendChild(row1);
+
+const row2 = document.createElement('div');
+row2.className = 'button-row';
+
+const resetAngleBtn = document.createElement('button');
+resetAngleBtn.textContent = 'Reset Angle';
+resetAngleBtn.onclick = () => {
+    state.angle = 0;
+    angleSlider.value = '0';
+    angleValue.textContent = '0';
+    applyCurrentRotation();
+};
+
+const resetAllBtn = document.createElement('button');
+resetAllBtn.textContent = 'Reset All';
+resetAllBtn.onclick = () => {
+    state.angle = 0;
+    angleSlider.value = '0';
+    angleValue.textContent = '0';
+    restoreAllRotations();
+    updateCurrentNode();
+};
+
+row2.appendChild(resetAngleBtn);
+row2.appendChild(resetAllBtn);
+panel.appendChild(row2);
+
+const row3 = document.createElement('div');
+row3.className = 'button-row';
+
+const printBtn = document.createElement('button');
+printBtn.textContent = 'Print Nodes';
+printBtn.onclick = () => printNodes(testNodes);
+
+const summaryBtn = document.createElement('button');
+summaryBtn.textContent = 'Print Summary';
+summaryBtn.onclick = () => printSummary();
+
+row3.appendChild(printBtn);
+row3.appendChild(summaryBtn);
+panel.appendChild(row3);
+
+const notes = document.createElement('div');
+notes.id = 'notes';
+notes.innerHTML = `
+    <strong>Tip</strong><br>
+    Start with filter = <em>thumb</em>. If the node moves the thumb correctly, write down:
+    node name, axis, and angle direction.
+`;
+panel.appendChild(notes);
+
+document.body.appendChild(panel);
+
+// =====================================================
+// Load model
+// =====================================================
+const loader = new GLTFLoader();
+
+loader.load(
+    '/models/robot_hand/scene.gltf',
+    (gltf) => {
+        handModel = gltf.scene;
+        handModel.rotation.z = Math.PI;
+        scene.add(handModel);
+
+        autoScaleAndCenter(handModel, 4);
+
+        testNodes = collectTestNodes(handModel);
+        testNodes.forEach(saveOriginalRotation);
+
+        console.log('Model loaded.');
+        printNodes(testNodes);
+        printSummary();
+
+        window.handModel = handModel;
+        window.testNodes = testNodes;
+        window.currentNode = () => currentNode;
+
+        updateCurrentNode();
+    },
+    undefined,
+    (error) => {
+        console.error('Error loading model:', error);
+    }
+);
+
+// =====================================================
+// Keyboard shortcuts
+// =====================================================
+window.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowRight') nextNode();
+    if (event.key === 'ArrowLeft') previousNode();
+
+    if (event.key.toLowerCase() === 'x') {
+        state.axis = 'x';
+        axisSelect.value = 'x';
+        applyCurrentRotation();
+    }
+    if (event.key.toLowerCase() === 'y') {
+        state.axis = 'y';
+        axisSelect.value = 'y';
+        applyCurrentRotation();
+    }
+    if (event.key.toLowerCase() === 'z') {
+        state.axis = 'z';
+        axisSelect.value = 'z';
+        applyCurrentRotation();
+    }
+});
+
+// =====================================================
+// Resize
+// =====================================================
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// =====================================================
+// Animate
+// =====================================================
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+animate();
