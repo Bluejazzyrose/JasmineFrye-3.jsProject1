@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { SerialPort } from 'serialport';
+
  
 const app = express();
 const PORT = 3000;

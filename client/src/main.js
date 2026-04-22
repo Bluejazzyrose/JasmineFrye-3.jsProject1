@@ -167,11 +167,11 @@ function applyFingerRotation(fingerName, angleDegrees) {
 }
 
 function updateModelFromState() {
-  applyFingerRotation('thumb', state.thumb);
-  applyFingerRotation('index', state.index);
-  applyFingerRotation('middle', state.middle);
-  applyFingerRotation('ring', state.ring);
-  applyFingerRotation('pinky', state.pinky);
+  applyFingerRotation('thumb', 90 - state.thumb);
+  applyFingerRotation('index', 90 - state.index);
+  applyFingerRotation('middle', 90 - state.middle);
+  applyFingerRotation('ring', 90 - state.ring);
+  applyFingerRotation('pinky', 90 - state.pinky);
 }
 
 async function sendHandToArduino() {
@@ -289,11 +289,11 @@ function buildUI() {
   const closeBtn = document.createElement('button');
   closeBtn.textContent = 'Open Hand';
   closeBtn.onclick = () => {
-    setFingerValue('thumb', 45);
-    setFingerValue('index', 45);
-    setFingerValue('middle', 45);
-    setFingerValue('ring', 45);
-    setFingerValue('pinky', 45);
+    setFingerValue('thumb', 80);
+    setFingerValue('index', 80);
+    setFingerValue('middle', 80);
+    setFingerValue('ring', 80);
+    setFingerValue('pinky', 80);
     syncAll();
   };
 
@@ -301,10 +301,10 @@ function buildUI() {
   pointBtn.textContent = 'Point';
   pointBtn.onclick = () => {
     setFingerValue('thumb', 20);
-    setFingerValue('index', 0);
-    setFingerValue('middle', 45);
-    setFingerValue('ring', 45);
-    setFingerValue('pinky', 45);
+    setFingerValue('index', 80);
+    setFingerValue('middle', 0);
+    setFingerValue('ring', 0);
+    setFingerValue('pinky', 0);
     syncAll();
   };
 
@@ -380,4 +380,5 @@ function animate() {
   controls.update();
   renderer.render(scene, camera);
 }
+
 animate();
